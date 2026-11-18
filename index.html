@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Helia P2P Mesh & Proxy Search Node</title>
+  <style>
+    :root {
+      --bg: #0b0e14;
+      --panel: #131822;
+      --border: #1f293a;
+      --text: #e2e8f0;
+      --muted: #64748b;
+      --accent: #38bdf8;
+      --accent-glow: rgba(56, 189, 248, 0.2);
+      --green: #10b981;
+      --amber: #f59e0b;
+      --red: #ef4444;
+      --font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      line-height: 1.5;
+      padding: 1.5rem;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    header {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 1.5rem;
+      gap: 1rem;
+    }
+
+    h1 { font-size: 1.25rem; font-weight: 600; display: flex; align-items: center; gap: 0.5rem; }
+    .badge {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+    }
+    .status-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--amber);
+      margin-right: 4px;
+    }
+    .status-dot.online { background: var(--green); box-shadow: 0 0 8px var(--green); }
+    .status-dot.error { background: var(--red); }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.25rem;
+    }
+    @media (max-width: 850px) { .grid { grid-template-columns: 1fr; } }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.85rem;
+    }
+    .card.full { grid-column: 1 / -1; }
+    .card h2 {
+      font-size: 0.9rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.5rem;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .row { display: flex; gap: 0.5rem; }
+    input[type="text"], textarea {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 0.6rem 0.75rem;
+      border-radius: 6px;
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+    }
+    input[type="text"]:focus, textarea:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-glow);
+    }
+    button {
+      background: var(--accent);
+      color: #05080c;
+      border: none;
+      padding: 0.6rem 1rem;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 0.85rem;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: opacity 0.15s;
+    }
+    button:hover { opacity: 0.9; }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+    button.secondary {
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    .mono-box {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.65rem;
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      word-break: break-all;
+      max-height: 160px;
+      overflow-y: auto;
+    }
+
+    .result-item {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      padding: 0.75rem;
+      border-radius: 4px;
+      margin-bottom: 0.5rem;
+    }
+    .result-item h4 { font-size: 0.9rem; color: var(--accent); margin-bottom: 0.25rem; }
+    .result-item p { font-size: 0.82rem; color: var(--text); margin-bottom: 0.35rem; }
+    .result-meta { font-family: var(--font-mono); font-size: 0.72rem; color: var(--muted); }
+
+    .checkbox-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.82rem;
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    #logBox {
+      height: 180px;
+      font-size: 0.75rem;
+      color: #94a3b8;
+    }
+    .log-ok { color: var(--green); }
+    .log-warn { color: var(--amber); }
+    .log-err { color: var(--red); }
+    .log-net { color: var(--accent); }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>
+      <span class="status-dot" id="statusDot"></span>
+      Helia P2P Mesh & Proxy Search Node
+    </h1>
+    <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+      <span class="badge">Topic: <strong id="topicLabel">helia-proxy-search-mesh-v1</strong></span>
+      <span class="badge">Peers: <strong id="peerCount">0</strong></span>
+      <span class="badge">Indexed Docs: <strong id="indexCount">0</strong></span>
+    </div>
+  </header>
+
+  <div class="grid">
+    <!-- Left Column: Proxy Search Engine -->
+    <div class="card">
+      <h2><span>1. Distributed Proxy Search</span> <span id="searchSpinner" style="color:var(--accent)"></span></h2>
+      <div class="row">
+        <input type="text" id="searchInput" placeholder="Search across P2P mesh & IPFS CIDs..." />
+        <button id="searchBtn" disabled>Search Mesh</button>
+      </div>
+      <label class="checkbox-row">
+        <input type="checkbox" id="actAsProxyCheckbox" checked />
+        <span>Act as Relay Proxy (answer peer search queries using local index & public gateways)</span>
+      </label>
+      <div id="searchResults" class="mono-box" style="max-height: 280px; min-height: 140px;">
+        <span style="color:var(--muted)">Waiting for node initialization...</span>
+      </div>
+    </div>
+
+    <!-- Right Column: Publish / Seed Content to IPFS & Mesh -->
+    <div class="card">
+      <h2><span>2. Seed Content to IPFS & Index</span></h2>
+      <input type="text" id="docTitle" placeholder="Document Title / URL / Keyword Tag" />
+      <textarea id="docBody" rows="3" placeholder="Content payload to pin in local Helia blockstore & advertise to mesh..."></textarea>
+      <div class="row">
+        <button id="publishBtn" disabled>Pin to IPFS & Broadcast Index</button>
+        <button id="fetchCidBtn" class="secondary" disabled>Fetch Raw CID</button>
+      </div>
+      <div style="font-size:0.78rem; color:var(--muted);">
+        Content is stored in your browser's Helia blockstore (CIDv1) and announced via GossipSub so other tabs/peers can query and retrieve it directly via WebRTC.
+      </div>
+    </div>
+
+    <!-- Full Width: WebRTC Hole-Punching & Connection Controls -->
+    <div class="card full">
+      <h2>
+        <span>3. Node Identity, Circuit Relay & WebRTC Hole-Punch</span>
+        <button id="copyAddrBtn" class="secondary" style="padding:0.2rem 0.6rem; font-size:0.75rem;">Copy Multiaddrs</button>
+      </h2>
+      <div class="grid" style="gap:0.75rem;">
+        <div>
+          <div style="font-size:0.75rem; color:var(--muted); margin-bottom:0.25rem;">Local PeerID & Shareable WebRTC Multiaddrs:</div>
+          <div id="myAddrs" class="mono-box">Booting libp2p + Helia...</div>
+        </div>
+        <div>
+          <div style="font-size:0.75rem; color:var(--muted); margin-bottom:0.25rem;">Direct Dial / Manual Hole-Punch Peer Multiaddr:</div>
+          <div class="row" style="margin-bottom:0.5rem;">
+            <input type="text" id="dialInput" placeholder="/dns4/.../p2p/.../p2p-circuit/webrtc/p2p/12D3KooW..." />
+            <button id="dialBtn" disabled>Dial Peer</button>
+          </div>
+          <div style="font-size:0.75rem; color:var(--muted);">
+            <strong>Auto-Discovery Active:</strong> Uses Bootstrap relays + Circuit Relay v2 + DCUtR (Direct Connection Upgrade through Relay) + PubSub Peer Discovery + Same-Origin BroadcastChannel.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Full Width: Live Mesh Telemetry Log -->
+    <div class="card full">
+      <h2>
+        <span>4. Live P2P Hole-Punch & Proxy Telemetry</span>
+        <button id="clearLogBtn" class="secondary" style="padding:0.2rem 0.6rem; font-size:0.75rem;">Clear</button>
+      </h2>
+      <div id="logBox" class="mono-box"></div>
+    </div>
+  </div>
+
+  <!-- Import Map for Helia + libp2p WebRTC / Circuit Relay / DCUtR / GossipSub via esm.sh -->
+  <script type="importmap">
+    {
+      "imports": {
+        "helia": "https://esm.sh/helia@4.2.4",
+        "@helia/strings": "https://esm.sh/@helia/strings@3.0.4",
+        "libp2p": "https://esm.sh/libp2p@1.4.4",
+        "@libp2p/websockets": "https://esm.sh/@libp2p/websockets@8.0.10",
+        "@libp2p/webtransport": "https://esm.sh/@libp2p/webtransport@4.0.11",
+        "@libp2p/webrtc": "https://esm.sh/@libp2p/webrtc@4.0.13",
+        "@libp2p/circuit-relay-v2": "https://esm.sh/@libp2p/circuit-relay-v2@1.0.14",
+        "@libp2p/dcutr": "https://esm.sh/@libp2p/dcutr@1.0.10",
+        "@libp2p/identify": "https://esm.sh/@libp2p/identify@1.0.14",
+        "@libp2p/bootstrap": "https://esm.sh/@libp2p/bootstrap@10.0.10",
+        "@libp2p/pubsub-peer-discovery": "https://esm.sh/@libp2p/pubsub-peer-discovery@10.0.10",
+        "@chainsafe/libp2p-gossipsub": "https://esm.sh/@chainsafe/libp2p-gossipsub@13.0.4",
+        "@chainsafe/libp2p-noise": "https://esm.sh/@chainsafe/libp2p-noise@15.0.3",
+        "@chainsafe/libp2p-yamux": "https://esm.sh/@chainsafe/libp2p-yamux@6.0.3",
+        "@multiformats/multiaddr": "https://esm.sh/@multiformats/multiaddr@12.3.1",
+        "multiformats/cid": "https://esm.sh/multiformats@13.1.0/cid"
+      }
+    }
+  </script>
+
+  <script type="module">
+    import { createHelia } from 'helia';
+    import { strings } from '@helia/strings';
+    import { createLibp2p } from 'libp2p';
+    import { webSockets } from '@libp2p/websockets';
+    import * as filters from '@libp2p/websockets/filters';
+    import { webTransport } from '@libp2p/webtransport';
+    import { webRTC } from '@libp2p/webrtc';
+    import { circuitRelayTransport } from '@libp2p/circuit-relay-v2';
+    import { dcutr } from '@libp2p/dcutr';
+    import { identify } from '@libp2p/identify';
+    import { bootstrap } from '@libp2p/bootstrap';
+    import { pubsubPeerDiscovery } from '@libp2p/pubsub-peer-discovery';
+    import { gossipsub } from '@chainsafe/libp2p-gossipsub';
+    import { noise } from '@chainsafe/libp2p-noise';
+    import { yamux } from '@chainsafe/libp2p-yamux';
+    import { multiaddr } from '@multiformats/multiaddr';
+    import { CID } from 'multiformats/cid';
+
+    // --- Configuration ---
+    const MESH_TOPIC = 'helia-proxy-search-mesh-v1';
+    const DISCOVERY_TOPIC = 'helia-mesh-discovery._peer-discovery._p2p._pubsub';
+    const BOOTSTRAP_RELAYS = [
+      '/dnsaddr/bootstrap.libp2p.io/p2p/QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN',
+      '/dnsaddr/bootstrap.libp2p.io/p2p/QmQCU2EcMqAqQPR2i9bChDtGNJchTbq5TbXJJ16u19uLTa',
+      '/dnsaddr/bootstrap.libp2p.io/p2p/QmbLHAnMoJPWSCR5Zhtx6BHJX9KiKNN6tpvbUcqanj75Nb',
+      '/dns4/ny5.bootstrap.libp2p.io/tcp/443/wss/p2p/QmQCU2EcMqAqQPR2i9bChDtGNJchTbq5TbXJJ16u19uLTa',
+      '/dns4/am6.bootstrap.libp2p.io/tcp/443/wss/p2p/QmbLHAnMoJPWSCR5Zhtx6BHJX9KiKNN6tpvbUcqanj75Nb'
+    ];
+
+    // --- DOM Elements ---
+    const statusDot = document.getElementById('statusDot');
+    const peerCountEl = document.getElementById('peerCount');
+    const indexCountEl = document.getElementById('indexCount');
+    const myAddrsEl = document.getElementById('myAddrs');
+    const logBox = document.getElementById('logBox');
+    const searchInput = document.getElementById('searchInput');
+    const searchBtn = document.getElementById('searchBtn');
+    const searchResults = document.getElementById('searchResults');
+    const searchSpinner = document.getElementById('searchSpinner');
+    const publishBtn = document.getElementById('publishBtn');
+    const fetchCidBtn = document.getElementById('fetchCidBtn');
+    const dialBtn = document.getElementById('dialBtn');
+    const dialInput = document.getElementById('dialInput');
+    const actAsProxyCheckbox = document.getElementById('actAsProxyCheckbox');
+
+    // --- State ---
+    let heliaNode = null;
+    let strStore = null;
+    const localIndex = new Map(); // cid -> { cid, title, snippet, timestamp, sourcePeer }
+    const pendingSearches = new Map(); // queryId -> { results: Map, timer }
+    const seenMessages = new Set();
+
+    // Local tab/window fast-path discovery (for instant local multi-tab hole-punching)
+    const localBus = new BroadcastChannel('helia-local-signaling');
+
+    // --- Logging Helper ---
+    function log(msg, level = 'info') {
+      const line = document.createElement('div');
+      const ts = new Date().toISOString().split('T')[1].slice(0, 8);
+      line.className = level === 'ok' ? 'log-ok' : level === 'warn' ? 'log-warn' : level === 'err' ? 'log-err' : level === 'net' ? 'log-net' : '';
+      line.textContent = `[${ts}] ${msg}`;
+      logBox.appendChild(line);
+      logBox.scrollTop = logBox.scrollHeight;
+    }
+
+    document.getElementById('clearLogBtn').onclick = () => { logBox.innerHTML = ''; };
+
+    // --- Seed Initial Welcome Document ---
+    function updateIndexCount() {
+      indexCountEl.textContent = localIndex.size;
+    }
+
+    // --- Initialize libp2p + Helia ---
+    async function initNode() {
+      try {
+        log('Configuring libp2p transports: WebSockets, WebTransport, WebRTC + Circuit Relay v2 + DCUtR...', 'net');
+
+        const libp2p = await createLibp2p({
+          addresses: {
+            listen: [
+              '/webrtc',
+              '/p2p-circuit'
+            ]
+          },
+          transports: [
+            webSockets({ filter: filters.all }),
+            webTransport(),
+            webRTC(),
+            circuitRelayTransport({
+              discoverRelays: 3
+            })
+          ],
+          connectionEncrypters: [noise()],
+          streamMuxers: [yamux()],
+          peerDiscovery: [
+            bootstrap({ list: BOOTSTRAP_RELAYS }),
+            pubsubPeerDiscovery({
+              interval: 5000,
+              topics: [DISCOVERY_TOPIC],
+              listenOnly: false
+            })
+          ],
+          services: {
+            identify: identify(),
+            dcutr: dcutr(),
+            pubsub: gossipsub({
+              emitSelf: false,
+              allowPublishToZeroTopicPeers: true,
+              fallbackToFloodsub: true
+            })
+          },
+          connectionManager: {
+            maxConnections: 100,
+            minConnections: 5
+          }
+        });
+
+        heliaNode = await createHelia({ libp2p });
+        strStore = strings(heliaNode);
+
+        const peerId = libp2p.peerId.toString();
+        statusDot.classList.add('online');
+        log(`Helia Node Online! PeerID: ${peerId}`, 'ok');
+
+        // Enable UI buttons
+        searchBtn.disabled = false;
+        publishBtn.disabled = false;
+        fetchCidBtn.disabled = false;
+        dialBtn.disabled = false;
+        searchResults.innerHTML = '<span style="color:var(--muted)">Ready. Enter a query to search local & P2P proxy nodes.</span>';
+
+        // Seed default node manifest into IPFS
+        const welcomeCid = await strStore.add(JSON.stringify({
+          node: peerId,
+          role: 'Helia P2P Proxy Search Node',
+          bootTime: new Date().toISOString()
+        }));
+        localIndex.set(welcomeCid.toString(), {
+          cid: welcomeCid.toString(),
+          title: `Node Manifest (${peerId.slice(0, 12)}...)`,
+          snippet: 'Active Helia WebRTC & DCUtR hole-punched search relay node.',
+          timestamp: Date.now(),
+          sourcePeer: peerId
+        });
+        updateIndexCount();
+
+        // Update Multiaddrs UI periodically (relays take a few seconds to reserve slots)
+        const refreshAddrs = () => {
+          const addrs = libp2p.getMultiaddrs().map(ma => ma.toString());
+          if (addrs.length === 0) {
+            myAddrsEl.textContent = `PeerID: ${peerId}\n(Negotiating Circuit Relay reservation for WebRTC hole-punching...)`;
+          } else {
+            myAddrsEl.textContent = addrs.join('\n');
+          }
+          peerCountEl.textContent = libp2p.getPeers().length;
+        };
+
+        setInterval(refreshAddrs, 2500);
+        refreshAddrs();
+
+        // --- Connection & Hole-Punching Event Listeners ---
+        libp2p.addEventListener('peer:discovery', async (evt) => {
+          const remoteId = evt.detail.id;
+          if (remoteId.toString() === peerId) return;
+          if (libp2p.getConnections(remoteId).length === 0) {
+            try {
+              await libp2p.dial(remoteId);
+            } catch (_) {
+              // Silent ignore for unreachable bootstrap/DHT peers
+            }
+          }
+        });
+
+        libp2p.addEventListener('peer:connect', (evt) => {
+          const remotePeer = evt.detail.toString();
+          peerCountEl.textContent = libp2p.getPeers().length;
+          const conns = libp2p.getConnections(evt.detail);
+          const transport = conns[0]?.remoteAddr?.toString().includes('/webrtc') ? 'WebRTC Direct (Hole-Punched)' : 'Relay/WSS';
+          log(`Connected to peer ${remotePeer.slice(0, 16)}... [${transport}]`, 'ok');
+
+          // Announce our local index summary to the mesh
+          broadcastMeshMessage({
+            type: 'ANNOUNCE_INDEX',
+            sender: peerId,
+            entries: Array.from(localIndex.values()).slice(-20)
+          });
+        });
+
+        libp2p.addEventListener('peer:disconnect', (evt) => {
+          peerCountEl.textContent = libp2p.getPeers().length;
+          log(`Peer disconnected: ${evt.detail.toString().slice(0, 16)}...`, 'warn');
+        });
+
+        // BroadcastChannel signaling for instant local browser tab discovery
+        localBus.onmessage = async (event) => {
+          const { type, addrs, sender } = event.data || {};
+          if (sender === peerId) return;
+          if (type === 'HELLO' && Array.isArray(addrs)) {
+            for (const addrStr of addrs) {
+              if (addrStr.includes('/webrtc')) {
+                try {
+                  await libp2p.dial(multiaddr(addrStr));
+                  log(`Hole-punched local peer via signaling bus: ${sender.slice(0, 14)}...`, 'ok');
+                  break;
+                } catch (_) {}
+              }
+            }
+          }
+        };
+
+        setInterval(() => {
+          const addrs = libp2p.getMultiaddrs().map(ma => ma.toString());
+          if (addrs.length > 0) {
+            localBus.postMessage({ type: 'HELLO', sender: peerId, addrs });
+          }
+        }, 4000);
+
+        // --- Subscribe to GossipSub Search & Proxy Mesh ---
+        const pubsub = libp2p.services.pubsub;
+        pubsub.subscribe(MESH_TOPIC);
+
+        pubsub.addEventListener('message', async (evt) => {
+          if (evt.detail.topic !== MESH_TOPIC) return;
+          try {
+            const raw = new TextDecoder().decode(evt.detail.data);
+            const msg = JSON.parse(raw);
+            await handleMeshMessage(msg, peerId);
+          } catch (err) {
+            // Ignore malformed packets
+          }
+        });
+
+      } catch (err) {
+        statusDot.classList.add('error');
+        log(`Initialization failed: ${err.message}`, 'err');
+        console.error(err);
+      }
+    }
+
+    // --- Broadcast Helper ---
+    async function broadcastMeshMessage(payload) {
+      if (!heliaNode) return;
+      payload.msgId = payload.msgId || `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+      seenMessages.add(payload.msgId);
+      const data = new TextEncoder().encode(JSON.stringify(payload));
+      try {
+        await heliaNode.libp2p.services.pubsub.publish(MESH_TOPIC, data);
+      } catch (err) {
+        log(`PubSub publish warning: ${err.message}`, 'warn');
+      }
+    }
+
+    // --- Mesh Protocol Handler (Proxy Search + Index Sync) ---
+    async function handleMeshMessage(msg, myPeerId) {
+      if (!msg || !msg.msgId || seenMessages.has(msg.msgId)) return;
+      seenMessages.add(msg.msgId);
+      if (seenMessages.size > 2000) seenMessages.clear();
+
+      // 1. Incoming Index Announcement from another peer
+      if (msg.type === 'ANNOUNCE_INDEX' && Array.isArray(msg.entries)) {
+        let added = 0;
+        for (const item of msg.entries) {
+          if (item.cid && !localIndex.has(item.cid)) {
+            localIndex.set(item.cid, item);
+            added++;
+          }
+        }
+        if (added > 0) {
+          updateIndexCount();
+          log(`Synced ${added} new IPFS index record(s) from peer ${msg.sender.slice(0, 12)}...`, 'net');
+        }
+      }
+
+      // 2. Incoming Proxy Search Query from the Mesh
+      if (msg.type === 'SEARCH_QUERY' && msg.sender !== myPeerId) {
+        if (!actAsProxyCheckbox.checked) return;
+        const q = (msg.query || '').toLowerCase().trim();
+        if (!q) return;
+
+        log(`Proxy received query "${q}" from ${msg.sender.slice(0, 12)}...`, 'net');
+        const hits = searchLocalStore(q);
+
+        // Optional external proxy fallback (Wikipedia OpenSearch API as live clearnet bridge)
+        if (hits.length === 0 && q.length >= 3) {
+          try {
+            const resp = await fetch(`https://en.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(q)}&limit=3&namespace=0&format=json&origin=*`);
+            if (resp.ok) {
+              const [, titles, descriptions, urls] = await resp.json();
+              for (let i = 0; i < titles.length; i++) {
+                const payload = JSON.stringify({ title: titles[i], summary: descriptions[i], url: urls[i], proxiedBy: myPeerId });
+                const cid = (await strStore.add(payload)).toString();
+                const entry = {
+                  cid,
+                  title: `${titles[i]} [Clearnet->IPFS Proxy]`,
+                  snippet: `${descriptions[i] || 'External resource'} (${urls[i]})`,
+                  timestamp: Date.now(),
+                  sourcePeer: myPeerId
+                };
+                localIndex.set(cid, entry);
+                hits.push(entry);
+              }
+              updateIndexCount();
+            }
+          } catch (_) {
+            // Clearnet proxy optional; ignore offline errors
+          }
+        }
+
+        if (hits.length > 0) {
+          await broadcastMeshMessage({
+            type: 'SEARCH_RESPONSE',
+            queryId: msg.queryId,
+            responder: myPeerId,
+            hits: hits.slice(0, 10)
+          });
+        }
+      }
+
+      // 3. Incoming Search Response for our active query
+      if (msg.type === 'SEARCH_RESPONSE' && pendingSearches.has(msg.queryId)) {
+        const session = pendingSearches.get(msg.queryId);
+        let newHits = 0;
+        for (const hit of (msg.hits || [])) {
+          if (!session.results.has(hit.cid)) {
+            session.results.set(hit.cid, { ...hit, viaProxy: msg.responder });
+            localIndex.set(hit.cid, hit);
+            newHits++;
+          }
+        }
+        if (newHits > 0) {
+          updateIndexCount();
+          renderSearchResults(Array.from(session.results.values()));
+          log(`Received ${newHits} proxy search hit(s) from ${msg.responder.slice(0, 12)}...`, 'ok');
+        }
+      }
+    }
+
+    // --- Local Index Matcher ---
+    function searchLocalStore(query) {
+      const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+      const matches = [];
+      for (const item of localIndex.values()) {
+        const haystack = `${item.title} ${item.snippet} ${item.cid}`.toLowerCase();
+        if (terms.every(t => haystack.includes(t))) {
+          matches.push(item);
+        }
+      }
+      return matches;
+    }
+
+    // --- Execute Distributed Search ---
+    async function runSearch() {
+      const q = searchInput.value.trim();
+      if (!q || !heliaNode) return;
+
+      const queryId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const localHits = searchLocalStore(q);
+      const resultMap = new Map();
+      localHits.forEach(h => resultMap.set(h.cid, { ...h, viaProxy: 'Local Blockstore' }));
+
+      renderSearchResults(Array.from(resultMap.values()));
+      searchSpinner.textContent = 'Querying P2P Mesh...';
+
+      pendingSearches.set(queryId, { results: resultMap });
+
+      // Broadcast query to all connected peers
+      await broadcastMeshMessage({
+        type: 'SEARCH_QUERY',
+        queryId,
+        sender: heliaNode.libp2p.peerId.toString(),
+        query: q
+      });
+
+      setTimeout(() => {
+        pendingSearches.delete(queryId);
+        searchSpinner.textContent = '';
+        if (resultMap.size === 0) {
+          searchResults.innerHTML = `<span style="color:var(--muted)">No results found across local store or active proxy peers for "${escapeHtml(q)}".</span>`;
+        }
+      }, 4500);
+    }
+
+    function renderSearchResults(items) {
+      if (items.length === 0) {
+        searchResults.innerHTML = '<span style="color:var(--muted)">Searching mesh peers...</span>';
+        return;
+      }
+      searchResults.innerHTML = items.map(item => `
+        <div class="result-item">
+          <h4>${escapeHtml(item.title)}</h4>
+          <p>${escapeHtml(item.snippet)}</p>
+          <div class="result-meta">
+            CID: <strong>${escapeHtml(item.cid)}</strong> | Via: ${escapeHtml((item.viaProxy || 'Mesh').slice(0, 18))}
+            <button class="secondary" style="padding:0.15rem 0.45rem; font-size:0.7rem; margin-left:0.5rem;" onclick="window.inspectCid('${escapeHtml(item.cid)}')">Cat CID</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // --- Global helper to fetch/inspect CID directly via Helia ---
+    window.inspectCid = async (cidStr) => {
+      if (!strStore) return;
+      log(`Retrieving CID ${cidStr} via Helia Bitswap/TrustlessGateway...`, 'net');
+      try {
+        const cid = CID.parse(cidStr);
+        const content = await strStore.get(cid);
+        alert(`CID: ${cidStr}\n\n${content}`);
+        log(`Successfully fetched CID ${cidStr} (${content.length} bytes)`, 'ok');
+      } catch (err) {
+        log(`Failed to fetch CID ${cidStr}: ${err.message}`, 'err');
+      }
+    };
+
+    // --- UI Event Bindings ---
+    searchBtn.onclick = runSearch;
+    searchInput.onkeydown = (e) => { if (e.key === 'Enter') runSearch(); };
+
+    publishBtn.onclick = async () => {
+      const title = document.getElementById('docTitle').value.trim();
+      const body = document.getElementById('docBody').value.trim();
+      if (!title || !body || !strStore) return;
+
+      try {
+        const payload = JSON.stringify({ title, body, created: new Date().toISOString() });
+        const cid = (await strStore.add(payload)).toString();
+        const entry = {
+          cid,
+          title,
+          snippet: body.slice(0, 180),
+          timestamp: Date.now(),
+          sourcePeer: heliaNode.libp2p.peerId.toString()
+        };
+
+        localIndex.set(cid, entry);
+        updateIndexCount();
+        document.getElementById('docTitle').value = '';
+        document.getElementById('docBody').value = '';
+
+        log(`Pinned to Helia IPFS! CID: ${cid}`, 'ok');
+        await broadcastMeshMessage({
+          type: 'ANNOUNCE_INDEX',
+          sender: heliaNode.libp2p.peerId.toString(),
+          entries: [entry]
+        });
+      } catch (err) {
+        log(`Publish error: ${err.message}`, 'err');
+      }
+    };
+
+    fetchCidBtn.onclick = async () => {
+      const cidInput = prompt('Enter IPFS CIDv0 or CIDv1 to retrieve over P2P:');
+      if (cidInput) await window.inspectCid(cidInput.trim());
+    };
+
+    dialBtn.onclick = async () => {
+      const addrStr = dialInput.value.trim();
+      if (!addrStr || !heliaNode) return;
+      try {
+        log(`Dialing & attempting WebRTC hole-punch to ${addrStr}...`, 'net');
+        await heliaNode.libp2p.dial(multiaddr(addrStr));
+        log('Direct connection established!', 'ok');
+        dialInput.value = '';
+      } catch (err) {
+        log(`Dial failed: ${err.message}`, 'err');
+      }
+    };
+
+    document.getElementById('copyAddrBtn').onclick = () => {
+      navigator.clipboard.writeText(myAddrsEl.textContent);
+      log('Copied multiaddrs to clipboard.', 'ok');
+    };
+
+    function escapeHtml(str) {
+      return String(str).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+    }
+
+    // Boot
+    initNode();
+  </script>
+</body>
+</html>
